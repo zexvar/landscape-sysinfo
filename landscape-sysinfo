@@ -1,28 +1,22 @@
 #!/usr/bin/env bash
 
-add_leading_zero_if_missing() {
-  local value="${1}"
-
-  [[ "${value}" =~ ^\.[0-9]+$ ]] && value="0${value}"
-  echo "${value}"
-}
-
-keep_one_decimal() {
-  local value="${1}"
-
-  [[ "${value}" =~ \. ]] && value="$(grep --perl-regexp --only-matching "[0-9]+\.[0-9]{1}" <<< "${value}")"
-
-  echo "${value}"
-}
-
 percentage() {
-  local value="${1}"
-  local total="${2}"
+  local value="$1"
+  local total="$2"
+  
+  awk -v value="$value" -v total="$total" \
+    'BEGIN {
+      if (total == 0) {
+        print "Error: total cannot be zero"
+        exit 1
+      }
+      print value / total * 100
+    }'
+}
 
-  [[ "${value}" =~ ^([0-9]+\.)?[0-9]+$ ]] || return 1
-  [[ "${total}" =~ ^([0-9]+\.)?[0-9]+$ ]] || return 1
-
-  awk -v value="${value}" -v total="${total}" 'BEGIN{print value / total * 100}'
+normalize_decimal() {
+  local value="$1"
+  printf "%.1f" "$(echo "$value" | sed 's/^\([0-9]*\.[0-9]\)/0&/')"
 }
 
 ram_usage() {
@@ -32,16 +26,16 @@ ram_usage() {
   local pct_used
   local data
 
-  data="$(free | grep "Mem:")"
+  data=$(free | grep "Mem:")
 
-  ram_used="$(awk '{print $3}' <<< "${data}")"
-  ram_total="$(awk '{print $2}' <<< "${data}")"
-  ram_total_human="$(free --human --si | grep "Mem:" | awk '{print $2}')"
+  ram_used=$(awk '{print $3}' <<< $data)
+  ram_total=$(awk '{print $2}' <<< $data)
+  ram_total_human=$(free --human --si | grep "Mem:" | awk '{print $2}')
 
-  pct_used="$(percentage "${ram_used}" "${ram_total}")"
-  pct_used="$(keep_one_decimal "$(add_leading_zero_if_missing "${pct_used}")")"
+  pct_used=$(percentage $ram_used $ram_total)
+  pct_used=$(normalize_decimal $pct_used)
 
-  echo "${pct_used}% of ${ram_total_human}"
+  echo "$pct_used% of $ram_total_human"
 }
 
 swap_usage() {
@@ -51,17 +45,17 @@ swap_usage() {
   local pct_used
   local data
 
-  data="$(free | grep "Swap:")"
+  data=$(free | grep "Swap:")
 
-  swap_used="$(awk '{print $3}' <<< "${data}")"
-  swap_total="$(awk '{print $2}' <<< "${data}")"
-  swap_total_human="$(free --human --si | grep "Swap:" | awk '{print $2}')"
+  swap_used=$(awk '{print $3}' <<< $data)
+  swap_total=$(awk '{print $2}' <<< $data)
+  swap_total_human=$(free --human --si | grep "Swap:" | awk '{print $2}')
 
-  if [[ "${swap_total_human}" != "0B" ]]; then
-    pct_used="$(percentage "${swap_used}" "${swap_total}")"
-    pct_used="$(keep_one_decimal "$(add_leading_zero_if_missing "${pct_used}")")"
+  if [[ $swap_total_human != "0B" ]]; then
+    pct_used=$(percentage $swap_used $swap_total)
+    pct_used=$(normalize_decimal $pct_used)
 
-    echo "${pct_used}% of ${swap_total_human}"
+    echo "$pct_used% of $swap_total_human"
     return
   fi
 
@@ -74,12 +68,12 @@ disk_usage() {
   local disk_total
   local data
 
-  data="$(df --human-readable / | tail -n +2)"
+  data=$(df --human-readable / | tail -n +2)
 
-  disk_total="$(awk '{print $2}' <<< "${data}")"
-  disk_pct="$(awk '{print $5}' <<< "${data}")"
+  disk_total=$(awk '{print $2}' <<< $data)
+  disk_pct=$(awk '{print $5}' <<< $data)
 
-  echo "${disk_pct} of ${disk_total}"
+  echo "$disk_pct of $disk_total"
 }
 
 processes() {
@@ -87,7 +81,8 @@ processes() {
 }
 
 system_load() {
-  keep_one_decimal "$(awk '{print $1}' < "/proc/loadavg")"
+  # normalize_decimal $(awk '{print $1}' < "/proc/loadavg")
+  normalize_decimal $(awk '{print $1}' /proc/loadavg)
 }
 
 network() {
@@ -97,25 +92,22 @@ network() {
   local interface
   local interfaces
 
-  interfaces="$(ip -oneline address | grep -v "host\|fe80" | grep --perl-regexp "inet6?")"
+  interfaces=$(ip -oneline address | grep -v "host\|fe80" | grep --perl-regexp "inet6?")
 
   while read -r interface; do
-    name="$(awk '{print $2}' <<< "${interface}")"
-    ip4="$(grep --perl-regexp --only-matching "(?<=inet )[^ ]+" <<< "${interface}")"
-    ip6="$(grep --perl-regexp --only-matching "(?<=inet6 )[^ ]+" <<< "${interface}")"
+    name=$(echo "$interface" | awk '{print $2}')
+    ip4=$(grep --perl-regexp --only-matching "(?<=inet )[^ ]+" <<< $interface)
+    ip6=$(grep --perl-regexp --only-matching "(?<=inet6 )[^ ]+" <<< $interface)
     
-    [ -n "$ip4" ] && echo "  IPv4 address for ${name}:|${ip4%%/*}"
-    [ -n "$ip6" ] && echo "  IPv6 address for ${name}:|${ip6%%/*}"
+    [ -n "$ip4" ] && echo "  IPv4 address for $name:|${ip4%%/*}"
+    [ -n "$ip6" ] && echo "  IPv6 address for $name:|${ip6%%/*}"
   done <<< "${interfaces}"
 }
 
 logged_in_users() {
-  local users
-  local count
-
-  users="$(ss --no-header state established '( sport = :ssh )' | awk '{print $5}')"
-  count="$(grep -vc "^$" <<< "${users}")"
-  echo "${count}"
+  local users=$(ss --no-header state established '( sport = :ssh )' | awk '{print $5}')
+  local count=$(grep -vc "^$" <<< $users)
+  echo "$count"
 }
 
 uptime() {
@@ -125,35 +117,35 @@ uptime() {
   local days
 
   if [[ -f "/proc/uptime" ]]; then
-    uptime="$(< "/proc/uptime")"
-    uptime="${uptime//.*}"
+    uptime=$(< "/proc/uptime")
+    uptime=${uptime//.*}
   fi
 
-  if [[ -n "${uptime}" ]]; then
-    mins="$((uptime / 60 % 60))"
-    hours="$((uptime / 3600 % 24))"
-    days="$((uptime / 86400))"
+  if [[ -n $uptime ]]; then
+    mins=$((uptime / 60 % 60))
+    hours=$((uptime / 3600 % 24))
+    days=$((uptime / 86400))
 
     uptime="${mins}m"
 
-    (( hours != 0 )) && uptime="${hours}h ${uptime}"
-    (( days != 0 )) && uptime="${days}d ${uptime}"
+    (( hours != 0 )) && uptime="${hours}h $uptime"
+    (( days != 0 )) && uptime="${days}d $uptime"
   fi
 
-  echo "${uptime}"
+  echo "$uptime"
 }
 
 main() {
   echo -e "\n  System information as of $(/bin/date)\n"
 
-  template="$(column -t -s "|" <<< "
+  template=$(column -t -s "|" <<< "
   System load:      |$(system_load)
   Usage of /:       |$(disk_usage)
   Memory usage:     |$(ram_usage)
   Swap usage:       |$(swap_usage)
   Processes:        |$(processes)
   Users logged in:  |$(logged_in_users)
-$(network)")"
+$(network)")
 
   echo -e "${template}"
   echo -e "\nThe uptime of this server is $(uptime).\n"

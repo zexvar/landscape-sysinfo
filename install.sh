@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-URL="https://raw.githubusercontent.com/zexero/landscape-sysinfo/main/landscape-sysinfo"
+URL="https://raw.githubusercontent.com/zexvar/landscape-sysinfo/main/landscape-sysinfo"
 FILE="/etc/update-motd.d/20-sysinfo"
 
 # download file
